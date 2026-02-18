@@ -26,6 +26,8 @@ This project is structured as a small, maintainable analytics system rather than
 
 This layout keeps concerns isolated, reduces coupling, and supports future extension (e.g., alternate statistical method or alternate front-end).
 
+Scalability note: The normalized schema (3NF) minimizes data redundancy and keeps joins explicit. If this scales to hundreds of projects and millions of rows, the current SQLite model can be migrated to PostgreSQL/Snowflake with minimal changes to the Python analysis layer, while indexes on `project_id`, `subject_id`, and `sample_id` preserve query performance.
+
 ## Repository Structure
 
 ```text
@@ -38,6 +40,9 @@ This layout keeps concerns isolated, reduces coupling, and supports future exten
 ├── README.md
 ├── dashboard/
 │   └── app.py
+├── docs/
+│   └── screenshots/
+│       └── dashboard-part4.png
 ├── src/
 │   ├── __init__.py
 │   ├── analysis.py
@@ -67,13 +72,29 @@ SQLite database: `immune_cells.db`
 
 ## Setup
 
-### 1) Install dependencies
+### 1) Create and activate a virtual environment (recommended)
+
+macOS/Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+### 2) Install dependencies
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-### 2) Build the database from CSV
+### 3) Build the database from CSV
 
 ```bash
 python3 load_data.py
@@ -85,7 +106,7 @@ Expected behavior:
 - Initializes schema
 - Loads subjects, samples, and melted cell-count rows
 
-### 3) Run command-line analysis report
+### 4) Run command-line analysis report
 
 ```bash
 python3 run_analysis.py
@@ -97,7 +118,7 @@ This script prints:
 - Part 3 responder vs non-responder statistical summary
 - Significant findings interpretation
 
-### 4) Launch interactive dashboard
+### 5) Launch interactive dashboard
 
 ```bash
 streamlit run dashboard/app.py
@@ -112,6 +133,10 @@ Dashboard tabs:
   - KPI cards (projects, subjects, avg male-responder B-cell)
   - Project/response/sex distributions
   - Raw subset table explorer
+
+Dashboard screenshot:
+
+![Part 4 Dashboard](docs/screenshots/dashboard-part4.png)
 
 ## Verification
 
