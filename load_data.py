@@ -1,9 +1,78 @@
-"""Initialize SQLite database and load cell-count.csv data."""
+import os
+
+import pandas as pd
+
+from src.config import CELL_TYPES, CSV_FILE
+from src.database import get_db_connection, init_db
 
 
-def main() -> None:
-    print("TODO: implement data loading logic.")
+def load_csv_to_db():
+    if not os.path.exists(CSV_FILE):
+        print(f"Error: {CSV_FILE} not found.")
+        return
+
+    print(f"Reading data from {CSV_FILE}...")
+    df = pd.read_csv(CSV_FILE)
+
+    init_db()
+    conn = get_db_connection()
+
+    try:
+        print("Processing Subjects...")
+        subject_cols = {
+            "subject": "subject_id",
+            "project": "project_id",
+            "condition": "condition",
+            "age": "age",
+            "sex": "sex",
+            "treatment": "treatment",
+            "response": "response",
+        }
+        subjects_df = df.loc[:, list(subject_cols.keys())].copy()
+        subjects_df.columns = [subject_cols[column] for column in subjects_df.columns]
+        subjects_df = subjects_df.drop_duplicates(subset=["subject_id"])
+
+        conn.execute("DELETE FROM cell_counts")
+        conn.execute("DELETE FROM samples")
+        conn.execute("DELETE FROM subjects")
+
+        subjects_df.to_sql("subjects", conn, if_exists="append", index=False)
+        print(f"-> Loaded {len(subjects_df)} subjects.")
+
+        print("Processing Samples...")
+        sample_cols = {
+            "sample": "sample_id",
+            "subject": "subject_id",
+            "time_from_treatment_start": "visit_time",
+            "sample_type": "sample_type",
+        }
+        samples_df = df.loc[:, list(sample_cols.keys())].copy()
+        samples_df.columns = [sample_cols[column] for column in samples_df.columns]
+        samples_df = samples_df.drop_duplicates(subset=["sample_id"])
+
+        samples_df.to_sql("samples", conn, if_exists="append", index=False)
+        print(f"-> Loaded {len(samples_df)} samples.")
+
+        print("Processing Cell Counts...")
+        counts_df = df.melt(
+            id_vars=["sample"],
+            value_vars=CELL_TYPES,
+            var_name="cell_type",
+            value_name="count",
+        ).rename(columns={"sample": "sample_id"})
+
+        counts_df.to_sql("cell_counts", conn, if_exists="append", index=False)
+        print(f"-> Loaded {len(counts_df)} cell count records.")
+
+        conn.commit()
+        print("Data ingestion complete successfully.")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
-    main()
+    load_csv_to_db()

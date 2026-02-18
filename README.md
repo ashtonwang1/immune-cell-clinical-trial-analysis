@@ -1,10 +1,23 @@
 # immune-cell-clinical-trial-analysis
 
-Project scaffold for the clinical trial analysis assignment.
-
 ## Structure
 
-- `load_data.py`: database initialization and CSV loading entrypoint
-- `src/`: database, SQL query, analysis, and statistics modules
-- `dashboard/app.py`: Streamlit dashboard entrypoint
-- `plots/`: exported figures
+```text
+.
+├── cell-count.csv
+├── load_data.py
+├── immune_cells.db
+├── requirements.txt
+├── README.md
+├── dashboard/
+│   └── app.py
+├── src/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── database.py
+│   ├── analysis.py
+│   └── statistics.py
+└── tests/
+    ├── __init__.py
+    └── test_basic.py
+```

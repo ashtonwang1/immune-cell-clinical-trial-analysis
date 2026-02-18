@@ -1,6 +1,3 @@
 pandas
-streamlit
-matplotlib
-seaborn
 scipy
-statsmodels
+streamlit

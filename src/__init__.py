@@ -1,1 +1,1 @@
-"""Core package for immune cell clinical trial analysis."""
+"""Core modules for immune cell clinical trial analysis."""
