@@ -20,8 +20,9 @@ This project is structured as a small, maintainable analytics system rather than
 - `load_data.py` is the ETL entrypoint (CSV -> normalized SQLite schema).
 - `src/database.py` owns connection and schema lifecycle.
 - `src/analysis.py` owns reusable feature engineering (counts -> percentages).
-- `src/statistics.py` owns inferential logic (Mann-Whitney U test).
+- `src/statistics.py` owns inferential logic (Mann-Whitney/Welch, FDR, effect sizes).
 - `src/queries.py` owns targeted business queries for Part 4.
+- `src/reporting.py` owns HTML/PDF report generation.
 - `dashboard/app.py` is the UI layer only (no heavy business logic embedded).
 
 This layout keeps concerns isolated, reduces coupling, and supports future extension (e.g., alternate statistical method or alternate front-end).
@@ -66,9 +67,9 @@ SQLite database: `immune_cells.db`
 - `cell_counts`
   - `id` (PK), `sample_id` (FK), `cell_type`, `count`
 
-## Why Mann-Whitney U
+## Statistical Approach
 
-`src/statistics.py` uses `scipy.stats.mannwhitneyu` (two-sided) instead of a t-test because biological count/frequency data is often non-normal and can be robustly compared with a non-parametric test.
+`src/statistics.py` defaults to `scipy.stats.mannwhitneyu` (two-sided) because biological count/frequency data is often non-normal. The analysis also supports Welch's t-test for sensitivity checks, reports BH-FDR adjusted q-values across cell-type hypotheses, and includes effect-size columns (`effect`, `cliffs_delta`) with per-group sample sizes (`n_yes`, `n_no`).
 
 ## Setup
 
@@ -127,12 +128,23 @@ streamlit run dashboard/app.py
 Dashboard tabs:
 
 - `Statistical Analysis (Part 3)`
-  - Mann-Whitney results table
-  - Interactive Plotly boxplot by responder status
+  - Global filters (condition/treatment/sample type/time)
+  - Unit-of-analysis toggle (sample vs subject)
+  - Metric toggle (percentage vs count)
+  - Optional CLR transform for compositional percentage analysis
+  - Mann-Whitney + BH-FDR results table (q-values, effects, group sizes)
+  - Interactive Plotly boxplot with q-value annotations
+  - CSV export for stats and filtered analysis dataset
+  - HTML/PDF report export
 - `Subset Analysis (Part 4)`
-  - KPI cards (projects, subjects, avg male-responder B-cell)
+  - KPI cards (projects, samples, subjects, avg male-responder B-cell)
   - Project/response/sex distributions
+  - Cohort flow (sample and subject attrition counts)
   - Raw subset table explorer
+- `Sensitivity / Robustness`
+  - Scenario matrix comparing significance across test/correction/time settings
+- `Methods & Definitions`
+  - Explicit methodology and interpretation notes
 
 Dashboard screenshot:
 
@@ -148,7 +160,7 @@ pytest -q
 
 Current baseline from this implementation:
 
-- Tests: `2 passed`
+- Tests: `5 passed`
 - ETL row counts after load:
   - `subjects`: 3500
   - `samples`: 10500
@@ -160,7 +172,7 @@ Current baseline from this implementation:
 - Configuration values (paths/cell types) are centralized in `src/config.py`.
 - SQL and transformation logic are explicit and reviewable.
 - Core domain logic is reusable outside Streamlit (used by both CLI and UI).
-- Tests validate the public analysis/statistics interfaces.
+- Tests validate analysis/statistics interfaces, subset-count consistency, CLR behavior, and report-export byte generation.
 
 ## Potential Next Improvements
 

@@ -1,90 +1,406 @@
 import os
 import sys
+from typing import cast
 
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.queries import get_baseline_melanoma_stats, get_male_responder_b_cell_avg
+from src.analysis import get_cohort_counts, get_filter_options, get_filtered_data
+from src.config import CELL_TYPES
+from src.queries import build_cohort_flow, get_subset_stats
+from src.reporting import build_html_report, build_pdf_report
 from src.statistics import compare_responders
+
+
+@st.cache_data(show_spinner=False)
+def cached_filter_options() -> dict[str, list[str]]:
+    return get_filter_options()
+
+
+@st.cache_data(show_spinner=False)
+def cached_filtered_data(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> pd.DataFrame:
+    return get_filtered_data(
+        condition=condition,
+        treatment=treatment,
+        sample_type=sample_type,
+        time_filter=time_filter,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def cached_compare_responders(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+    unit: str,
+    metric: str,
+    transform: str,
+    test: str,
+    correction: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
+    return compare_responders(
+        condition=condition,
+        treatment=treatment,
+        sample_type=sample_type,
+        time_filter=time_filter,
+        unit=unit,
+        metric=metric,
+        transform=transform,
+        test=test,
+        correction=correction,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def cached_subset_stats(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> dict[str, pd.Series | pd.DataFrame | int | float | None]:
+    return get_subset_stats(
+        condition=condition,
+        treatment=treatment,
+        sample_type=sample_type,
+        time_filter=time_filter,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def cached_cohort_flow(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> pd.DataFrame:
+    return build_cohort_flow(
+        condition=condition,
+        treatment=treatment,
+        sample_type=sample_type,
+        time_filter=time_filter,
+    )
+
+
+def to_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8")
 
 
 st.set_page_config(page_title="Loblaw Bio Analysis", layout="wide")
 
 st.title("Loblaw Bio: Clinical Trial Analysis")
-st.markdown("Analysis of immune cell populations in Melanoma patients treated with Miraclib.")
+st.markdown("Industrial-grade cohort analytics for immune-cell populations in Miraclib clinical trial data.")
 
-tab1, tab2 = st.tabs(["Statistical Analysis (Part 3)", "Subset Analysis (Part 4)"])
+options = cached_filter_options()
 
+default_condition = "melanoma" if "melanoma" in [v.lower() for v in options["conditions"]] else options["conditions"][0]
+default_treatment = "miraclib" if "miraclib" in [v.lower() for v in options["treatments"]] else options["treatments"][0]
+default_sample_type = "PBMC" if "PBMC" in options["sample_types"] else options["sample_types"][0]
+
+condition = cast(
+    str,
+    st.sidebar.selectbox("Indication", options["conditions"], index=options["conditions"].index(default_condition)),
+)
+treatment = cast(
+    str,
+    st.sidebar.selectbox("Treatment", options["treatments"], index=options["treatments"].index(default_treatment)),
+)
+sample_type = cast(
+    str,
+    st.sidebar.selectbox("Sample Type", options["sample_types"], index=options["sample_types"].index(default_sample_type)),
+)
+time_label = st.sidebar.selectbox("Time From Treatment Start", ["All", "Baseline only"], index=0)
+time_filter = "baseline_only" if time_label == "Baseline only" else "all"
+
+unit_label = st.sidebar.selectbox("Unit of Analysis", ["Sample", "Subject"], index=0)
+unit = "sample" if unit_label == "Sample" else "subject"
+
+metric_label = st.sidebar.selectbox("Metric", ["Percentage", "Count"], index=0)
+metric = "percentage" if metric_label == "Percentage" else "count"
+
+clr_transform_enabled = st.sidebar.toggle("Advanced: CLR transform (compositional)", value=False)
+transform = "clr" if (clr_transform_enabled and metric == "percentage") else "none"
+
+if clr_transform_enabled and metric != "percentage":
+    st.sidebar.info("CLR transform is applied only when Metric=Percentage.")
+
+show_all_points = st.sidebar.toggle("Show all points in boxplot", value=False)
+point_mode = "all" if show_all_points else "outliers"
+
+filtered_df = cached_filtered_data(condition, treatment, sample_type, time_filter)
+cohort_counts = get_cohort_counts(filtered_df)
+
+active_filters_text = (
+    f"Indication={condition} | Treatment={treatment} | SampleType={sample_type} | "
+    f"Time={'Baseline only' if time_filter == 'baseline_only' else 'All'} | Unit={unit_label} | "
+    f"Metric={metric_label} | Transform={'CLR' if transform == 'clr' else 'Raw'}"
+)
+st.markdown(f"**Active Filters:** {active_filters_text}")
+
+top_col_1, top_col_2 = st.columns(2)
+top_col_1.metric("n_samples", cohort_counts["n_samples"])
+top_col_2.metric("n_subjects", cohort_counts["n_subjects"])
+
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "Statistical Analysis (Part 3)",
+        "Subset Analysis (Part 4)",
+        "Sensitivity / Robustness",
+        "Methods & Definitions",
+    ]
+)
 
 with tab1:
-    st.header("Responder vs. Non-Responder Analysis")
-    st.markdown("Comparison of cell population relative frequencies (PBMC samples).")
+    st.header("Responder vs Non-Responder")
 
-    stats_df, plot_data = compare_responders()
+    stats_df, plot_df, summary = cached_compare_responders(
+        condition=condition,
+        treatment=treatment,
+        sample_type=sample_type,
+        time_filter=time_filter,
+        unit=unit,
+        metric=metric,
+        transform=transform,
+        test="mannwhitney",
+        correction="bh_fdr",
+    )
 
-    st.subheader("Statistical Significance (Mann-Whitney U)")
+    st.caption(
+        f"Test: {summary['test_label']} | Multiple testing: {summary['correction_label']} | "
+        f"Unit: {summary['unit']} | Metric: {summary['metric']}"
+    )
 
-    def highlight_significant(row) -> list[str]:
-        is_sig = bool(row["significant"])
-        return ["background-color: #d1e7dd" if is_sig else "" for _ in range(len(row))]
+    if len(stats_df) == 0:
+        st.warning("No records available for the current filter set.")
+    else:
+        table_df = stats_df.loc[
+            :,
+            [
+                "cell_type",
+                "n_yes",
+                "n_no",
+                "median_yes",
+                "median_no",
+                "effect",
+                "cliffs_delta",
+                "p_value",
+                "q_value",
+                "significant",
+            ],
+        ].copy()
 
-    styled = (
-        stats_df[["cell_type", "p_value", "significant", "avg_responder", "avg_non_responder"]]
-        .style.apply(highlight_significant, axis=1)
-        .format(
-            {
-                "p_value": "{:.4f}",
-                "avg_responder": "{:.2f}%",
-                "avg_non_responder": "{:.2f}%",
-            }
+        table_df["significant"] = table_df["significant"].map(
+            lambda x: "✅ significant (q<0.05)" if bool(x) else "—"
         )
-    )
-    st.dataframe(styled, use_container_width=True)
 
-    st.subheader("Population Distributions")
-    fig = px.box(
-        plot_data,
-        x="cell_type",
-        y="percentage",
-        color="response",
-        points="all",
-        title="Cell Frequency Distribution by Response Group",
-        labels={"percentage": "Relative Frequency (%)", "response": "Response"},
-        color_discrete_map={"yes": "#28a745", "no": "#dc3545"},
-    )
-    st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(table_df, use_container_width=True, hide_index=True)
 
+        dcol1, dcol2 = st.columns(2)
+        dcol1.download_button(
+            "Download stats table (CSV)",
+            data=to_csv_bytes(table_df),
+            file_name="part3_stats.csv",
+            mime="text/csv",
+        )
+        dcol2.download_button(
+            "Download filtered analysis data (CSV)",
+            data=to_csv_bytes(plot_df),
+            file_name="part3_filtered_data.csv",
+            mime="text/csv",
+        )
+
+        fig = px.box(
+            plot_df,
+            x="cell_type",
+            y="metric_value",
+            color="response",
+            points=point_mode,
+            category_orders={"cell_type": CELL_TYPES, "response": ["no", "yes"]},
+            color_discrete_map={"yes": "#1f9d55", "no": "#d64545"},
+            labels={"metric_value": metric_label, "response": "Response", "cell_type": "Cell Type"},
+            title="Distribution by Response Group",
+        )
+
+        max_by_cell = plot_df.groupby("cell_type")["metric_value"].max().to_dict()
+        max_global = float(plot_df["metric_value"].max()) if len(plot_df) > 0 else 0.0
+        offset = max(1.0, max_global * 0.08)
+
+        for _, stat_row in stats_df.iterrows():
+            cell = str(stat_row["cell_type"])
+            q_obj = stat_row["q_value"]
+            q_val = float(q_obj) if isinstance(q_obj, (int, float)) else None
+            text = f"q={q_val:.3g}" if q_val is not None else "q=NA"
+            y = float(max_by_cell.get(cell, max_global)) + offset
+            fig.add_annotation(x=cell, y=y, text=text, showarrow=False, font={"size": 11})
+
+        if max_global > 0:
+            fig.update_yaxes(range=[0, max_global + 2 * offset])
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        flow_for_report = cached_cohort_flow(condition, treatment, sample_type, time_filter)
+        html_report = build_html_report(
+            filters_text=active_filters_text,
+            cohort_counts=cohort_counts,
+            summary=summary,
+            stats_df=stats_df,
+            flow_df=flow_for_report,
+            fig=fig,
+        )
+        pdf_report = build_pdf_report(
+            filters_text=active_filters_text,
+            cohort_counts=cohort_counts,
+            summary=summary,
+            stats_df=stats_df,
+            flow_df=flow_for_report,
+        )
+
+        r1, r2 = st.columns(2)
+        r1.download_button(
+            "Generate report (HTML)",
+            data=html_report,
+            file_name="analysis_report.html",
+            mime="text/html",
+        )
+        r2.download_button(
+            "Generate report (PDF)",
+            data=pdf_report,
+            file_name="analysis_report.pdf",
+            mime="application/pdf",
+        )
 
 with tab2:
-    st.header("Baseline Characterization (Part 4)")
-    st.markdown("Cohort analysis for Melanoma patients at Time 0 (Baseline).")
+    st.header("Baseline / Cohort Characterization")
 
-    stats = get_baseline_melanoma_stats()
-    avg_b_cell = get_male_responder_b_cell_avg()
+    subset_stats = cached_subset_stats(condition, treatment, sample_type, time_filter)
+    flow_df = cached_cohort_flow(condition, treatment, sample_type, time_filter)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Samples per Project", f"{len(stats['by_project'])} Projects")
-    with col2:
-        st.metric("Total Subjects", f"{int(stats['by_project'].sum())}")
-    with col3:
-        st.metric("Avg B-Cells (Male Responders)", f"{avg_b_cell:.2f}")
+    project_count = cast(int, subset_stats["n_projects"])
+    total_samples = cast(int, subset_stats["n_samples"])
+    total_subjects = cast(int, subset_stats["n_subjects"])
+    avg_b = subset_stats["avg_b_cell_male_responders"]
+    avg_b_text = f"{avg_b:.2f}" if isinstance(avg_b, float) else "N/A"
 
-    st.divider()
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Projects", project_count)
+    k2.metric("Total Samples (cohort)", total_samples)
+    k3.metric("Total Subjects (cohort)", total_subjects)
+    k4.metric("Avg B-cell Count (Male Responders)", avg_b_text)
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.subheader("By Project")
-        st.dataframe(stats["by_project"], use_container_width=True)
-    with c2:
-        st.subheader("By Response")
-        st.bar_chart(stats["by_response"])
-    with c3:
-        st.subheader("By Gender")
-        st.bar_chart(stats["by_sex"])
+    st.subheader("Cohort Flow")
+    st.dataframe(flow_df, use_container_width=True, hide_index=True)
+    st.bar_chart(flow_df.set_index("step")[["n_samples", "n_subjects"]])
+
+    p_samples = cast(pd.Series, subset_stats["by_project_samples"]).rename("n_samples").reset_index()
+    p_samples.columns = ["project_id", "n_samples"]
+    p_subjects = cast(pd.Series, subset_stats["by_project_subjects"]).rename("n_subjects").reset_index()
+    p_subjects.columns = ["project_id", "n_subjects"]
+
+    c1, c2 = st.columns(2)
+    c1.subheader("Samples by Project")
+    c1.dataframe(p_samples, use_container_width=True, hide_index=True)
+    c2.subheader("Subjects by Project")
+    c2.dataframe(p_subjects, use_container_width=True, hide_index=True)
+
+    r_col, s_col = st.columns(2)
+    r_col.subheader("Subjects by Response")
+    r_col.bar_chart(cast(pd.Series, subset_stats["by_response"]))
+    s_col.subheader("Subjects by Sex")
+    s_col.bar_chart(cast(pd.Series, subset_stats["by_sex"]))
+
+    raw_subset = cast(pd.DataFrame, subset_stats["df_raw"])
+
+    e1, e2 = st.columns(2)
+    e1.download_button(
+        "Download subset raw data (CSV)",
+        data=to_csv_bytes(raw_subset),
+        file_name="part4_subset_raw.csv",
+        mime="text/csv",
+    )
+    e2.download_button(
+        "Download cohort flow (CSV)",
+        data=to_csv_bytes(flow_df),
+        file_name="cohort_flow.csv",
+        mime="text/csv",
+    )
+
+    with st.expander("Show Query Logic"):
+        st.code(
+            """
+WHERE LOWER(sub.condition)=<condition>
+  AND LOWER(sub.treatment)=<treatment>
+  AND LOWER(s.sample_type)=<sample_type>
+  AND (s.visit_time=0 when Time=Baseline only)
+            """.strip(),
+            language="sql",
+        )
 
     with st.expander("View Raw Subset Data"):
-        st.dataframe(stats["df_raw"], use_container_width=True)
+        st.dataframe(raw_subset, use_container_width=True)
+
+with tab3:
+    st.header("Sensitivity / Robustness")
+
+    scenario_configs = [
+        ("Baseline | MW | BH-FDR", "baseline_only", "mannwhitney", "bh_fdr"),
+        ("All Time | MW | BH-FDR", "all", "mannwhitney", "bh_fdr"),
+        ("Baseline | Welch t | BH-FDR", "baseline_only", "welch_t", "bh_fdr"),
+        ("Baseline | MW | None", "baseline_only", "mannwhitney", "none"),
+    ]
+
+    scenario_maps: dict[str, dict[str, bool]] = {}
+    for label, sc_time, sc_test, sc_corr in scenario_configs:
+        s_df, _, _ = cached_compare_responders(
+            condition=condition,
+            treatment=treatment,
+            sample_type=sample_type,
+            time_filter=sc_time,
+            unit=unit,
+            metric=metric,
+            transform=transform,
+            test=sc_test,
+            correction=sc_corr,
+        )
+        scenario_maps[label] = {
+            str(row["cell_type"]): bool(row["significant"]) for _, row in s_df.iterrows()
+        }
+
+    all_cells = sorted(set().union(*[set(v.keys()) for v in scenario_maps.values()]))
+    reference_label = scenario_configs[0][0]
+
+    rows = []
+    for cell in all_cells:
+        ref_value = scenario_maps[reference_label].get(cell, False)
+        cell_row: dict[str, str] = {"cell_type": str(cell)}
+        stable = True
+        for label, _, _, _ in scenario_configs:
+            current = scenario_maps[label].get(cell, False)
+            cell_row[label] = "✅" if current else "—"
+            stable = stable and (current == ref_value)
+        cell_row["robustness"] = "✅ stable" if stable else "⚠️ sensitive"
+        rows.append(cell_row)
+
+    robustness_df = pd.DataFrame(rows)
+    st.dataframe(robustness_df, use_container_width=True, hide_index=True)
+
+with tab4:
+    st.header("Methods & Definitions")
+    st.markdown(
+        """
+- Response groups use `response=yes` vs `response=no`.
+- Main inference uses Mann-Whitney U, with BH-FDR correction across tested cell types.
+- Significance flag is based on `q_value < 0.05`.
+- Unit-of-analysis can be sample-level or subject-level median aggregation.
+- Percentage metric is compositional and should be interpreted with domain caution.
+- Cohort flow reports both unique samples and unique subjects at each filtering step.
+        """
+    )
