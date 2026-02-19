@@ -61,15 +61,16 @@ Scalability note: The normalized schema (3NF) minimizes data redundancy and keep
 SQLite database: `immune_cells.db`
 
 - `subjects`
-  - `subject_id` (PK), `project_id`, `condition`, `age`, `sex`, `treatment`, `response`
+  - `subject_pk` (PK), `project_id`, `subject_id`, `condition`, `age`, `sex`, `treatment`, `response`
+  - unique key: `(project_id, subject_id)`
 - `samples`
-  - `sample_id` (PK), `subject_id` (FK), `visit_time`, `sample_type`
+  - `sample_id` (PK), `subject_pk` (FK), `visit_time`, `sample_type`
 - `cell_counts`
   - `id` (PK), `sample_id` (FK), `cell_type`, `count`
 
 ## Statistical Approach
 
-`src/statistics.py` defaults to `scipy.stats.mannwhitneyu` (two-sided) because biological count/frequency data is often non-normal. The analysis also supports Welch's t-test for sensitivity checks, reports BH-FDR adjusted q-values across cell-type hypotheses, and includes effect-size columns (`effect`, `cliffs_delta`) with per-group sample sizes (`n_yes`, `n_no`).
+`src/statistics.py` defaults to `scipy.stats.mannwhitneyu` (two-sided) because biological count/frequency data is often non-normal. The default analysis is baseline-only (`visit_time=0`) with subject-level aggregation to reduce repeated-measure pseudoreplication. It also supports Welch's t-test for sensitivity checks, reports BH-FDR adjusted q-values across cell-type hypotheses, and includes effect-size plus directionality context (`effect`, `cliffs_delta`, `direction`, `median_diff`) with bootstrap 95% confidence intervals.
 
 ## Setup
 
@@ -124,6 +125,8 @@ This script prints:
 ```bash
 streamlit run dashboard/app.py
 ```
+
+Local dashboard URL: `http://127.0.0.1:8501`
 
 Dashboard tabs:
 

@@ -32,6 +32,10 @@ def test_compare_responders_columns() -> None:
         "stat_score",
         "effect",
         "cliffs_delta",
+        "direction",
+        "median_diff",
+        "ci_95_low",
+        "ci_95_high",
         "significant",
         "avg_responder",
         "avg_non_responder",
@@ -55,6 +59,31 @@ def test_part4_subset_counts_are_consistent() -> None:
     n_subjects = cast(int, stats["n_subjects"])
     assert n_samples == int(by_project_samples.sum())
     assert n_subjects == int(by_project_subjects.sum())
+
+
+def test_part4_avg_b_cell_is_subject_level() -> None:
+    stats = get_subset_stats(
+        condition="melanoma",
+        treatment="miraclib",
+        sample_type="PBMC",
+        time_filter="baseline_only",
+    )
+    raw = cast(pd.DataFrame, stats["df_raw"])
+    filtered = cast(
+        pd.DataFrame,
+        raw.loc[
+            (raw["sex"] == "M") & (raw["response"] == "yes") & (raw["cell_type"] == "b_cell"),
+            ["subject_pk", "count"],
+        ],
+    )
+    if len(filtered) == 0:
+        assert stats["avg_b_cell_male_responders"] is None
+        return
+
+    expected = float(filtered.groupby("subject_pk", as_index=True)["count"].mean().mean())
+    observed = stats["avg_b_cell_male_responders"]
+    assert isinstance(observed, float)
+    assert abs(observed - expected) < 1e-9
 
 
 def test_compare_responders_clr_transform() -> None:

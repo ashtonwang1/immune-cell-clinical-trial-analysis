@@ -1,13 +1,8 @@
-import os
-import sys
 from typing import cast
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.analysis import get_cohort_counts, get_filter_options, get_filtered_data
 from src.config import CELL_TYPES
@@ -118,10 +113,10 @@ sample_type = cast(
     str,
     st.sidebar.selectbox("Sample Type", options["sample_types"], index=options["sample_types"].index(default_sample_type)),
 )
-time_label = st.sidebar.selectbox("Time From Treatment Start", ["All", "Baseline only"], index=0)
+time_label = st.sidebar.selectbox("Time From Treatment Start", ["All", "Baseline only"], index=1)
 time_filter = "baseline_only" if time_label == "Baseline only" else "all"
 
-unit_label = st.sidebar.selectbox("Unit of Analysis", ["Sample", "Subject"], index=0)
+unit_label = st.sidebar.selectbox("Unit of Analysis", ["Sample", "Subject"], index=1)
 unit = "sample" if unit_label == "Sample" else "subject"
 
 metric_label = st.sidebar.selectbox("Metric", ["Percentage", "Count"], index=0)
@@ -176,7 +171,7 @@ with tab1:
 
     st.caption(
         f"Test: {summary['test_label']} | Multiple testing: {summary['correction_label']} | "
-        f"Unit: {summary['unit']} | Metric: {summary['metric']}"
+        f"Unit: {summary['unit']} | Metric: {summary['metric']} | {summary['bootstrap_ci']}"
     )
 
     if len(stats_df) == 0:
@@ -190,6 +185,10 @@ with tab1:
                 "n_no",
                 "median_yes",
                 "median_no",
+                "median_diff",
+                "direction",
+                "ci_95_low",
+                "ci_95_high",
                 "effect",
                 "cliffs_delta",
                 "p_value",
@@ -295,6 +294,7 @@ with tab2:
     k2.metric("Total Samples (cohort)", total_samples)
     k3.metric("Total Subjects (cohort)", total_subjects)
     k4.metric("Avg B-cell Count (Male Responders)", avg_b_text)
+    st.caption("Average B-cell count is computed at subject level (mean within subject, then cohort mean).")
 
     st.subheader("Cohort Flow")
     st.dataframe(flow_df, use_container_width=True, hide_index=True)

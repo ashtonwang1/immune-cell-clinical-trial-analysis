@@ -6,7 +6,7 @@ from src.config import DB_PATH
 def get_db_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
+    _ = conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
@@ -21,21 +21,23 @@ def init_db() -> None:
     DROP TABLE IF EXISTS subjects;
 
     CREATE TABLE subjects (
-        subject_id TEXT PRIMARY KEY,
+        subject_pk INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id TEXT NOT NULL,
         project_id TEXT NOT NULL,
         condition TEXT NOT NULL,
         age INTEGER,
         sex TEXT CHECK (sex IN ('M', 'F')),
         treatment TEXT NOT NULL,
-        response TEXT CHECK (response IN ('yes', 'no'))
+        response TEXT CHECK (response IN ('yes', 'no')),
+        UNIQUE (project_id, subject_id)
     );
 
     CREATE TABLE samples (
         sample_id TEXT PRIMARY KEY,
-        subject_id TEXT NOT NULL,
+        subject_pk INTEGER NOT NULL,
         visit_time REAL NOT NULL,
         sample_type TEXT NOT NULL,
-        FOREIGN KEY (subject_id) REFERENCES subjects (subject_id) ON DELETE CASCADE
+        FOREIGN KEY (subject_pk) REFERENCES subjects (subject_pk) ON DELETE CASCADE
     );
 
     CREATE TABLE cell_counts (
@@ -50,7 +52,7 @@ def init_db() -> None:
     CREATE INDEX idx_subjects_project ON subjects(project_id);
     CREATE INDEX idx_subjects_condition_treatment ON subjects(condition, treatment);
     CREATE INDEX idx_subjects_response_sex ON subjects(response, sex);
-    CREATE INDEX idx_samples_subject ON samples(subject_id);
+    CREATE INDEX idx_samples_subject_pk ON samples(subject_pk);
     CREATE INDEX idx_samples_type_time ON samples(sample_type, visit_time);
     CREATE INDEX idx_cell_counts_sample ON cell_counts(sample_id);
     CREATE INDEX idx_cell_counts_type ON cell_counts(cell_type);

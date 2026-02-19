@@ -88,14 +88,18 @@ def build_pdf_report(
             "cell_type",
             "n_yes",
             "n_no",
+            "median_diff",
+            "direction",
+            "ci_95_low",
+            "ci_95_high",
             "effect",
             "p_value",
             "q_value",
             "significant",
         ]
-        stats_table = (
-            stats_df.loc[:, stats_cols].copy() if len(stats_df) > 0 else pd.DataFrame({col: [] for col in stats_cols})
-        )
+        stats_table = stats_df.reindex(columns=stats_cols).copy()
+        if len(stats_table) == 0:
+            stats_table = pd.DataFrame({col: [] for col in stats_cols})
         stats_table = stats_table.fillna("")
 
         fig2, ax2 = plt.subplots(figsize=(11.69, 8.27))

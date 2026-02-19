@@ -11,6 +11,7 @@ def get_cell_frequency_data() -> pd.DataFrame:
     query = """
     SELECT
         s.sample_id,
+        sub.subject_pk,
         sub.subject_id,
         sub.project_id,
         sub.treatment,
@@ -22,7 +23,7 @@ def get_cell_frequency_data() -> pd.DataFrame:
         c.cell_type,
         c.count
     FROM samples s
-    JOIN subjects sub ON s.subject_id = sub.subject_id
+    JOIN subjects sub ON s.subject_pk = sub.subject_pk
     JOIN cell_counts c ON s.sample_id = c.sample_id
     """
 
@@ -72,9 +73,10 @@ def get_filter_options() -> dict[str, list[str]]:
 
 
 def get_cohort_counts(df: pd.DataFrame) -> dict[str, int]:
+    subject_col = "subject_pk" if "subject_pk" in df.columns else "subject_id"
     return {
         "n_samples": int(df["sample_id"].nunique()),
-        "n_subjects": int(df["subject_id"].nunique()),
+        "n_subjects": int(df[subject_col].nunique()),
     }
 
 
@@ -89,12 +91,12 @@ def prepare_unit_level_data(
     value_col = metric
 
     if unit == "sample":
-        output = df.loc[:, ["cell_type", "response", "sample_id", "subject_id", value_col]].copy()
+        output = df.loc[:, ["cell_type", "response", "sample_id", "subject_pk", value_col]].copy()
         output = output.rename(columns={value_col: "metric_value", "sample_id": "unit_id"})
         return cast(pd.DataFrame, output)
 
     if unit == "subject":
-        grouped = df.groupby(["subject_id", "response", "cell_type"], as_index=False)[value_col].median()
+        grouped = df.groupby(["subject_pk", "response", "cell_type"], as_index=False)[value_col].median()
         grouped.columns = ["unit_id", "response", "cell_type", "metric_value"]
         return cast(pd.DataFrame, grouped)
 

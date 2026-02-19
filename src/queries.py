@@ -17,6 +17,7 @@ def _fetch_subset(
     query = """
     SELECT
         sub.project_id,
+        sub.subject_pk,
         s.sample_id,
         sub.subject_id,
         LOWER(sub.response) AS response,
@@ -25,7 +26,7 @@ def _fetch_subset(
         c.cell_type,
         c.count
     FROM samples s
-    JOIN subjects sub ON s.subject_id = sub.subject_id
+    JOIN subjects sub ON s.subject_pk = sub.subject_pk
     JOIN cell_counts c ON s.sample_id = c.sample_id
     WHERE LOWER(sub.condition) = ?
       AND LOWER(sub.treatment) = ?
@@ -50,10 +51,10 @@ def get_subset_stats(
 ) -> dict[str, pd.Series | pd.DataFrame | int | float | None]:
     df = _fetch_subset(condition, treatment, sample_type, time_filter)
 
-    sample_unique = cast(pd.DataFrame, df.loc[:, ["project_id", "sample_id", "subject_id"]].drop_duplicates())
+    sample_unique = cast(pd.DataFrame, df.loc[:, ["project_id", "sample_id", "subject_pk"]].drop_duplicates())
     subject_unique = cast(
         pd.DataFrame,
-        df.loc[:, ["project_id", "subject_id", "response", "sex"]].drop_duplicates(),
+        df.loc[:, ["project_id", "subject_pk", "subject_id", "response", "sex"]].drop_duplicates(),
     )
 
     by_project_samples = pd.Series(sample_unique["project_id"].tolist(), dtype="string").value_counts()
@@ -65,14 +66,15 @@ def get_subset_stats(
         pd.DataFrame,
         df.loc[
             (df["sex"] == "M") & (df["response"] == "yes") & (df["cell_type"] == "b_cell"),
-            ["count"],
+            ["subject_pk", "count"],
         ].copy(),
     )
     avg_b_cell: float | None
     if len(b_cell) == 0:
         avg_b_cell = None
     else:
-        avg_b_cell = float(cast(pd.Series, b_cell["count"]).mean())
+        subject_level = cast(pd.Series, b_cell.groupby("subject_pk", as_index=True)["count"].mean())
+        avg_b_cell = float(subject_level.mean())
 
     return {
         "df_raw": df,
@@ -82,7 +84,7 @@ def get_subset_stats(
         "by_sex": by_sex,
         "n_projects": int(sample_unique["project_id"].nunique()),
         "n_samples": int(sample_unique["sample_id"].nunique()),
-        "n_subjects": int(subject_unique["subject_id"].nunique()),
+        "n_subjects": int(subject_unique["subject_pk"].nunique()),
         "avg_b_cell_male_responders": avg_b_cell,
     }
 
@@ -117,11 +119,12 @@ def build_cohort_flow(
     rows: list[dict[str, int | str]] = []
 
     def add_step(label: str, current: pd.DataFrame) -> None:
+        subject_col = "subject_pk" if "subject_pk" in current.columns else "subject_id"
         rows.append(
             {
                 "step": label,
                 "n_samples": int(current["sample_id"].nunique()),
-                "n_subjects": int(current["subject_id"].nunique()),
+                "n_subjects": int(current[subject_col].nunique()),
             }
         )
 
