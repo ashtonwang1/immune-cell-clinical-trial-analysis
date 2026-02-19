@@ -7,3 +7,4 @@ plots/*.pdf
 .DS_Store
 *.egg-info/
 outputs/
+.pytest_cache/

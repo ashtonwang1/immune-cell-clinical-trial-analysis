@@ -19,6 +19,11 @@ def main() -> None:
 
     print("\n=== Part 3: Statistical Analysis (Responders vs Non-Responders) ===")
     print("Condition: Melanoma, Treatment: Miraclib, Sample: PBMC")
+    print(
+        "Default mode: baseline_only + subject-level aggregation "
+        "(predictive framing; avoids post-treatment leakage)."
+    )
+    print("All-time sensitivity can be reviewed in the dashboard with Time=All.")
 
     stats_df, _, summary = compare_responders(time_filter="baseline_only", unit="subject")
     print(
@@ -70,15 +75,25 @@ def main() -> None:
     n_samples = cast(int, part4["n_samples"])
     n_subjects = cast(int, part4["n_subjects"])
     avg_b_raw = part4["avg_b_cell_male_responders"]
+    avg_b_value = float(avg_b_raw) if isinstance(avg_b_raw, (int, float)) else None
+    avg_b_display = f"{avg_b_value:.2f}" if avg_b_value is not None else "N/A"
+
+    print("\n=== Part 4: Baseline Subset Summary ===")
+    print(f"Projects: {n_projects}")
+    print(f"Samples: {n_samples}")
+    print(f"Subjects: {n_subjects}")
+    print(f"Avg B-cell Count (Male Responders, subject-level mean): {avg_b_display}")
+
     part4_summary = {
         "n_projects": n_projects,
         "n_samples": n_samples,
         "n_subjects": n_subjects,
         "avg_b_cell_male_responders": (
-            round(float(avg_b_raw), 2)
-            if isinstance(avg_b_raw, float)
+            round(avg_b_value, 2)
+            if avg_b_value is not None
             else None
         ),
+        "avg_b_cell_male_responders_display": avg_b_display,
     }
     (output_dir / "part4_summary.json").write_text(
         json.dumps(part4_summary, indent=2),

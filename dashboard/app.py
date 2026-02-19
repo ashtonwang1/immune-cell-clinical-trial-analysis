@@ -99,6 +99,13 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8")
 
 
+def format_sensitivity_status(is_significant: bool, q_value: float | None) -> str:
+    if q_value is None or pd.isna(q_value):
+        return "insufficient data"
+    state = "significant" if is_significant else "not significant"
+    return f"{state} (q={q_value:.3f})"
+
+
 st.set_page_config(page_title="Loblaw Bio Analysis", layout="wide")
 
 st.title("Loblaw Bio: Clinical Trial Analysis")
@@ -207,7 +214,7 @@ with tab1:
         ].copy()
 
         table_df["significant"] = table_df["significant"].map(
-            lambda x: "✅ significant (q<0.05)" if bool(x) else "—"
+            lambda x: "significant (q<0.05)" if bool(x) else "not significant"
         )
 
         st.dataframe(table_df, use_container_width=True, hide_index=True)
@@ -383,10 +390,15 @@ with tab3:
         scenario_sig[label] = {
             str(row["cell_type"]): bool(row["significant"]) for _, row in s_df.iterrows()
         }
-        scenario_q[label] = {
-            str(row["cell_type"]): (float(row["q_value"]) if row["q_value"] is not None else None)
-            for _, row in s_df.iterrows()
-        }
+        scenario_q[label] = {}
+        for _, row in s_df.iterrows():
+            q_obj = row["q_value"]
+            q_val: float | None = None
+            if isinstance(q_obj, (int, float)):
+                q_float = float(q_obj)
+                if not pd.isna(q_float):
+                    q_val = q_float
+            scenario_q[label][str(row["cell_type"])] = q_val
 
     all_cells = sorted(set().union(*[set(v.keys()) for v in scenario_sig.values()]))
     reference_label = scenario_configs[0][0]
@@ -399,17 +411,22 @@ with tab3:
         for label, _, _, _ in scenario_configs:
             current = scenario_sig[label].get(cell, False)
             q_val = scenario_q[label].get(cell)
-            if q_val is not None:
-                marker = "✅" if current else "—"
-                cell_row[label] = f"{marker} q={q_val:.3f}"
-            else:
-                cell_row[label] = "N/A"
+            cell_row[label] = format_sensitivity_status(current, q_val)
             stable = stable and (current == ref_value)
-        cell_row["robustness"] = "✅ stable" if stable else "⚠️ sensitive"
+        cell_row["robustness"] = "stable" if stable else "sensitive"
         rows.append(cell_row)
 
     robustness_df = pd.DataFrame(rows)
-    st.dataframe(robustness_df, use_container_width=True, hide_index=True)
+    if len(robustness_df) == 0:
+        st.info("No testable cell types under the current filters. Relax filters to run sensitivity checks.")
+    else:
+        scenario_summary = []
+        for label, _, _, _ in scenario_configs:
+            tested = len(scenario_sig[label])
+            significant = int(sum(scenario_sig[label].values()))
+            scenario_summary.append(f"{label}: {significant}/{tested} significant")
+        st.caption("Scenario signal counts: " + " | ".join(scenario_summary))
+        st.dataframe(robustness_df, use_container_width=True, hide_index=True)
 
 with tab4:
     st.header("Methods & Definitions")

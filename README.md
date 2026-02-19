@@ -1,10 +1,10 @@
 # Immune Cell Clinical Trial Analysis
 
-Production-style analytical pipeline for an immune-cell clinical trial assignment.
+End-to-end clinical analytics system I designed and delivered independently for immune-cell trial decision support.
 
 Live Dashboard: https://ashtonwang1-immune-cell-clinical-trial-analysis-dashboardapp.streamlit.app/
 
-This project is structured as a small, maintainable analytics system rather than a single notebook/script. It separates ingestion, domain analysis, statistical testing, and presentation so each layer can evolve independently.
+The implementation is intentionally structured as a maintainable analytics system rather than a single notebook/script. ETL, domain analysis, statistical inference, and presentation are separated so each layer can evolve without cross-coupling.
 
 ## Business Questions Covered
 
@@ -43,15 +43,13 @@ Scalability note: The normalized schema (3NF) minimizes data redundancy and keep
 ├── README.md
 ├── dashboard/
 │   └── app.py
-├── docs/
-│   └── screenshots/
-│       └── dashboard-part4.png
 ├── src/
 │   ├── __init__.py
 │   ├── analysis.py
 │   ├── config.py
 │   ├── database.py
 │   ├── queries.py
+│   ├── reporting.py
 │   └── statistics.py
 └── tests/
     ├── __init__.py
@@ -72,7 +70,7 @@ SQLite database: `immune_cells.db`
 
 ## Statistical Approach
 
-`src/statistics.py` defaults to `scipy.stats.mannwhitneyu` (two-sided) because biological count/frequency data is often non-normal. The default analysis is baseline-only (`visit_time=0`) with subject-level aggregation to reduce repeated-measure pseudoreplication. It also supports Welch's t-test for sensitivity checks, reports BH-FDR adjusted q-values across cell-type hypotheses, and includes effect-size plus directionality context (`effect`, `cliffs_delta`, `direction`, `median_diff`) with bootstrap 95% confidence intervals.
+`src/statistics.py` defaults to `scipy.stats.mannwhitneyu` (two-sided) because biological count/frequency data is often non-normal. The CLI default analysis is baseline-only (`visit_time=0`) with subject-level aggregation to reduce repeated-measure pseudoreplication and preserve a predictive framing (pre-treatment signal only, no post-treatment leakage). The dashboard supports both baseline-only and all-time sensitivity views. The implementation reports BH-FDR adjusted q-values across cell-type hypotheses and includes effect-size plus directionality context (`effect`, `cliffs_delta`, `direction`, `median_diff`) with bootstrap 95% confidence intervals.
 
 ## Setup
 
@@ -120,8 +118,9 @@ python3 run_analysis.py
 This script prints:
 
 - Part 2 sample frequency preview
-- Part 3 responder vs non-responder statistical summary
+- Part 3 responder vs non-responder statistical summary (default: baseline-only, subject-level)
 - Significant findings interpretation
+- Part 4 baseline subset summary with the male-responder B-cell metric displayed at two decimals (`XXX.XX`)
 - Reproducible artifacts under `outputs/`:
   - `outputs/part2_frequency_table.csv`
   - `outputs/part3_stats.csv`
@@ -147,7 +146,7 @@ Dashboard tabs:
   - CSV export for stats and filtered analysis dataset
   - HTML/PDF report export
 - `Subset Analysis (Part 4)`
-  - KPI cards (projects, samples, subjects, avg male-responder B-cell)
+  - KPI cards (projects, samples, subjects, avg male-responder B-cell at two-decimal display precision)
   - Project/response/sex distributions
   - Cohort flow (sample and subject attrition counts)
   - Raw subset table explorer
@@ -155,10 +154,6 @@ Dashboard tabs:
   - Scenario matrix comparing significance across test/correction/time settings
 - `Methods & Definitions`
   - Explicit methodology and interpretation notes
-
-Dashboard screenshot:
-
-![Part 4 Dashboard](docs/screenshots/dashboard-part4.png)
 
 ## Verification
 
@@ -183,11 +178,4 @@ Current baseline from this implementation:
 - SQL and transformation logic are explicit and reviewable.
 - Core domain logic is reusable outside Streamlit (used by both CLI and UI).
 - Tests validate analysis/statistics interfaces, subset-count consistency, CLR behavior, and report-export byte generation.
-
-## Potential Next Improvements
-
-1. Add parameterized SQL for all query interfaces and stricter input validation.
-2. Add uniqueness guard/constraint for `(sample_id, cell_type)` to prevent accidental duplication.
-3. Add subject-level aggregation mode to avoid pseudoreplication in repeated-measure settings.
-4. Cache UI computation stages (`st.cache_data`) keyed by filter tuple for scale.
-5. Expand test suite with integration checks for Part 4 query semantics.
+- This submission is packaged in a delivery-ready state: deterministic outputs, explicit assumptions, and no placeholder documentation.
