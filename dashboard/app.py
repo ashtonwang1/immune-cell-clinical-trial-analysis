@@ -13,7 +13,7 @@ if not os.path.exists(DB_PATH):
 
     load_csv_to_db()
 
-from src.analysis import get_cohort_counts, get_filter_options, get_filtered_data
+from src.analysis import get_cohort_counts, get_filter_options, get_filtered_data, get_part2_frequency_table
 from src.config import CELL_TYPES
 from src.queries import build_cohort_flow, get_subset_stats
 from src.reporting import build_html_report, build_pdf_report
@@ -38,6 +38,11 @@ def cached_filtered_data(
         sample_type=sample_type,
         time_filter=time_filter,
     )
+
+
+@st.cache_data(show_spinner=False)
+def cached_part2_table() -> pd.DataFrame:
+    return get_part2_frequency_table()
 
 
 @st.cache_data(show_spinner=False)
@@ -161,8 +166,9 @@ top_col_1, top_col_2 = st.columns(2)
 top_col_1.metric("n_samples", cohort_counts["n_samples"])
 top_col_2.metric("n_subjects", cohort_counts["n_subjects"])
 
-tab1, tab2, tab3, tab4 = st.tabs(
+tab_part2, tab_part3, tab_part4, tab_sensitivity, tab_methods = st.tabs(
     [
+        "Data Overview (Part 2)",
         "Statistical Analysis (Part 3)",
         "Subset Analysis (Part 4)",
         "Sensitivity / Robustness",
@@ -170,7 +176,39 @@ tab1, tab2, tab3, tab4 = st.tabs(
     ]
 )
 
-with tab1:
+with tab_part2:
+    st.header("Frequency Table by Sample")
+
+    part2_all_df = cached_part2_table()
+    if len(filtered_df) == 0:
+        part2_view = part2_all_df.iloc[0:0].copy()
+    else:
+        sample_ids = filtered_df["sample_id"].astype(str).unique().tolist()
+        part2_view = part2_all_df.loc[part2_all_df["sample"].astype(str).isin(sample_ids)].copy()
+
+    st.caption("Relative frequency (%) of each immune cell population per sample.")
+    st.caption(f"Rows under active filters: {len(part2_view)}")
+
+    if len(part2_view) == 0:
+        st.warning("No Part 2 rows available for the current filter set.")
+    else:
+        st.dataframe(part2_view, use_container_width=True, hide_index=True)
+
+    p2_col_1, p2_col_2 = st.columns(2)
+    p2_col_1.download_button(
+        "Download Part 2 table (active filters)",
+        data=to_csv_bytes(part2_view),
+        file_name="part2_frequency_table_filtered.csv",
+        mime="text/csv",
+    )
+    p2_col_2.download_button(
+        "Download Part 2 table (all samples)",
+        data=to_csv_bytes(part2_all_df),
+        file_name="part2_frequency_table.csv",
+        mime="text/csv",
+    )
+
+with tab_part3:
     st.header("Responder vs Non-Responder")
 
     stats_df, plot_df, summary = cached_compare_responders(
@@ -293,7 +331,7 @@ with tab1:
             mime="application/pdf",
         )
 
-with tab2:
+with tab_part4:
     st.header("Baseline / Cohort Characterization")
 
     subset_stats = cached_subset_stats(condition, treatment, sample_type, time_filter)
@@ -363,7 +401,7 @@ WHERE LOWER(sub.condition)=<condition>
     with st.expander("View Raw Subset Data"):
         st.dataframe(raw_subset, use_container_width=True)
 
-with tab3:
+with tab_sensitivity:
     st.header("Sensitivity / Robustness")
 
     scenario_configs = [
@@ -428,7 +466,7 @@ with tab3:
         st.caption("Scenario signal counts: " + " | ".join(scenario_summary))
         st.dataframe(robustness_df, use_container_width=True, hide_index=True)
 
-with tab4:
+with tab_methods:
     st.header("Methods & Definitions")
     st.markdown(
         """

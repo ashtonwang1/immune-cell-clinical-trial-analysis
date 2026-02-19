@@ -52,11 +52,13 @@ def main() -> None:
     stats_df.to_csv(output_dir / "part3_stats.csv", index=False)
 
     print("\nInterpretation:")
+    significant_count = 0
     for row in stats_df.to_dict(orient="records"):
         is_significant = bool(row.get("significant", False))
         q_value_obj = row.get("q_value")
         q_value = float(q_value_obj) if isinstance(q_value_obj, (int, float)) else None
         if is_significant and q_value is not None:
+            significant_count += 1
             print(f"-> SIGNIFICANT difference found in {row['cell_type']} (q={q_value:.4f})")
             direction = str(row.get("direction", "undetermined"))
             ci_low = row.get("ci_95_low")
@@ -64,6 +66,9 @@ def main() -> None:
             print(f"   Direction: {direction}")
             if isinstance(ci_low, (int, float)) and isinstance(ci_high, (int, float)):
                 print(f"   95% bootstrap CI: [{float(ci_low):.4f}, {float(ci_high):.4f}]")
+
+    if significant_count == 0:
+        print("-> No significant populations found at q<0.05.")
 
     part4 = get_subset_stats(
         condition="melanoma",

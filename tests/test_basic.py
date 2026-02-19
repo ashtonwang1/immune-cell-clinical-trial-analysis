@@ -3,6 +3,7 @@ from typing import cast
 import pandas as pd
 import plotly.express as px
 
+import run_analysis
 from load_data import load_csv_to_db
 from src.analysis import get_cell_frequency_data, get_part2_frequency_table
 from src.queries import get_subset_stats
@@ -162,3 +163,136 @@ def test_report_builders_return_valid_bytes() -> None:
         flow_df=flow_df,
     )
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_run_analysis_prints_no_significant_message(capsys, monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def fake_part2_table() -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "sample": "sample00001",
+                    "total_count": 100,
+                    "population": "b_cell",
+                    "count": 10,
+                    "percentage": 10.0,
+                }
+            ]
+        )
+
+    def fake_compare_responders(**_: object) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
+        stats_df = pd.DataFrame(
+            [
+                {
+                    "cell_type": "b_cell",
+                    "n_yes": 10,
+                    "n_no": 10,
+                    "median_diff": 0.1,
+                    "direction": "higher_in_responders",
+                    "ci_95_low": -0.2,
+                    "ci_95_high": 0.4,
+                    "effect": 0.05,
+                    "p_value": 0.20,
+                    "q_value": 0.20,
+                    "significant": False,
+                    "avg_responder": 10.1,
+                    "avg_non_responder": 10.0,
+                }
+            ]
+        )
+        return (
+            stats_df,
+            pd.DataFrame([{"cell_type": "b_cell", "metric_value": 10.0, "response": "yes"}]),
+            {
+                "test_label": "Mann-Whitney U",
+                "correction_label": "BH-FDR",
+                "unit": "subject",
+                "metric": "percentage",
+                "bootstrap_ci": "95% bootstrap CI on median difference (1000 resamples)",
+            },
+        )
+
+    def fake_subset_stats(**_: object) -> dict[str, float | int | None]:
+        return {
+            "n_projects": 1,
+            "n_samples": 1,
+            "n_subjects": 1,
+            "avg_b_cell_male_responders": 123.45,
+        }
+
+    monkeypatch.setattr(run_analysis, "get_part2_frequency_table", fake_part2_table)
+    monkeypatch.setattr(run_analysis, "compare_responders", fake_compare_responders)
+    monkeypatch.setattr(run_analysis, "get_subset_stats", fake_subset_stats)
+
+    run_analysis.main()
+    output = capsys.readouterr().out
+
+    assert "-> No significant populations found at q<0.05." in output
+
+
+def test_run_analysis_hides_no_significant_message_when_signal_exists(capsys, monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def fake_part2_table() -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "sample": "sample00001",
+                    "total_count": 100,
+                    "population": "b_cell",
+                    "count": 10,
+                    "percentage": 10.0,
+                }
+            ]
+        )
+
+    def fake_compare_responders(**_: object) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
+        stats_df = pd.DataFrame(
+            [
+                {
+                    "cell_type": "b_cell",
+                    "n_yes": 10,
+                    "n_no": 10,
+                    "median_diff": 0.6,
+                    "direction": "higher_in_responders",
+                    "ci_95_low": 0.2,
+                    "ci_95_high": 0.8,
+                    "effect": 0.30,
+                    "p_value": 0.01,
+                    "q_value": 0.01,
+                    "significant": True,
+                    "avg_responder": 10.6,
+                    "avg_non_responder": 10.0,
+                }
+            ]
+        )
+        return (
+            stats_df,
+            pd.DataFrame([{"cell_type": "b_cell", "metric_value": 10.0, "response": "yes"}]),
+            {
+                "test_label": "Mann-Whitney U",
+                "correction_label": "BH-FDR",
+                "unit": "subject",
+                "metric": "percentage",
+                "bootstrap_ci": "95% bootstrap CI on median difference (1000 resamples)",
+            },
+        )
+
+    def fake_subset_stats(**_: object) -> dict[str, float | int | None]:
+        return {
+            "n_projects": 1,
+            "n_samples": 1,
+            "n_subjects": 1,
+            "avg_b_cell_male_responders": 123.45,
+        }
+
+    monkeypatch.setattr(run_analysis, "get_part2_frequency_table", fake_part2_table)
+    monkeypatch.setattr(run_analysis, "compare_responders", fake_compare_responders)
+    monkeypatch.setattr(run_analysis, "get_subset_stats", fake_subset_stats)
+
+    run_analysis.main()
+    output = capsys.readouterr().out
+
+    assert "-> SIGNIFICANT difference found in b_cell (q=0.0100)" in output
+    assert "-> No significant populations found at q<0.05." not in output
