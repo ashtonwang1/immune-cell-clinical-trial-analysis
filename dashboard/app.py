@@ -1,8 +1,17 @@
+import os
 from typing import cast
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+from src.config import DB_PATH
+
+# Auto-generate database on first run (e.g. Streamlit Cloud)
+if not os.path.exists(DB_PATH):
+    from load_data import load_csv_to_db
+
+    load_csv_to_db()
 
 from src.analysis import get_cohort_counts, get_filter_options, get_filtered_data
 from src.config import CELL_TYPES
