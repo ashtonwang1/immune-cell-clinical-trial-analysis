@@ -2,7 +2,7 @@
 
 Production-style analytical pipeline for an immune-cell clinical trial assignment.
 
-Live Dashboard: https://your-app-url.streamlit.app
+Live Dashboard: https://ashtonwang1-immune-cell-clinical-trial-analysis-dashboardapp.streamlit.app/
 
 This project is structured as a small, maintainable analytics system rather than a single notebook/script. It separates ingestion, domain analysis, statistical testing, and presentation so each layer can evolve independently.
 
