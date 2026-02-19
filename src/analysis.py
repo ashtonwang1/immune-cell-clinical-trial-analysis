@@ -42,6 +42,13 @@ def get_cell_frequency_data() -> pd.DataFrame:
     return df
 
 
+def get_part2_frequency_table() -> pd.DataFrame:
+    df = get_cell_frequency_data().copy()
+    out = df.loc[:, ["sample_id", "total_count", "cell_type", "count", "percentage"]].copy()
+    out = out.rename(columns={"sample_id": "sample", "cell_type": "population"})
+    return cast(pd.DataFrame, out.loc[:, ["sample", "total_count", "population", "count", "percentage"]])
+
+
 def get_filtered_data(
     condition: str = "melanoma",
     treatment: str = "miraclib",

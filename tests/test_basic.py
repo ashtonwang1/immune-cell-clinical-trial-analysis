@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 
 from load_data import load_csv_to_db
-from src.analysis import get_cell_frequency_data
+from src.analysis import get_cell_frequency_data, get_part2_frequency_table
 from src.queries import get_subset_stats
 from src.reporting import build_html_report, build_pdf_report
 from src.statistics import compare_responders
@@ -18,6 +18,13 @@ def test_cell_frequency_columns() -> None:
     df = get_cell_frequency_data()
     expected = {"sample_id", "cell_type", "count", "total_count", "percentage"}
     assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
+def test_part2_frequency_table_columns_match_spec() -> None:
+    df = get_part2_frequency_table()
+    expected_order = ["sample", "total_count", "population", "count", "percentage"]
+    assert list(df.columns) == expected_order
     assert len(df) > 0
 
 

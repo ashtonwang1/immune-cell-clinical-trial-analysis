@@ -2,6 +2,8 @@
 
 Production-style analytical pipeline for an immune-cell clinical trial assignment.
 
+Live Dashboard: https://your-app-url.streamlit.app
+
 This project is structured as a small, maintainable analytics system rather than a single notebook/script. It separates ingestion, domain analysis, statistical testing, and presentation so each layer can evolve independently.
 
 ## Business Questions Covered
@@ -94,6 +96,7 @@ python -m venv .venv
 
 ```bash
 python3 -m pip install -r requirements.txt
+python3 -m pip install -e .
 ```
 
 ### 3) Build the database from CSV
@@ -119,6 +122,10 @@ This script prints:
 - Part 2 sample frequency preview
 - Part 3 responder vs non-responder statistical summary
 - Significant findings interpretation
+- Reproducible artifacts under `outputs/`:
+  - `outputs/part2_frequency_table.csv`
+  - `outputs/part3_stats.csv`
+  - `outputs/part4_summary.json`
 
 ### 5) Launch interactive dashboard
 
@@ -163,7 +170,7 @@ pytest -q
 
 Current baseline from this implementation:
 
-- Tests: `5 passed`
+- Tests: `7 passed`
 - ETL row counts after load:
   - `subjects`: 3500
   - `samples`: 10500

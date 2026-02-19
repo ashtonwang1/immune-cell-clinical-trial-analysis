@@ -6,3 +6,5 @@ __pycache__/
 plots/*.png
 plots/*.pdf
 .DS_Store
+*.egg-info/
+outputs/

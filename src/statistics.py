@@ -90,15 +90,18 @@ def compare_responders(
     plot_df = prepare_unit_level_data(df, unit=unit, metric=metric)
     if transform == "clr":
         plot_df = apply_clr_transform(plot_df)
+    plot_df = cast(pd.DataFrame, plot_df)
+    plot_df = cast(pd.DataFrame, plot_df.loc[plot_df["response"].isin(["yes", "no"])].copy())
 
     results = []
-    cell_types = sorted(set(plot_df["cell_type"].dropna().astype(str).tolist()))
+    cell_series = cast(pd.Series, plot_df.loc[:, "cell_type"])
+    cell_types = sorted(set(cell_series.dropna().astype(str).tolist()))
     ci_stat = "mean" if test == "welch_t" else "median"
 
     for cell_idx, cell in enumerate(cell_types):
-        subset = plot_df[plot_df["cell_type"] == cell]
-        group_yes = subset.loc[subset["response"] == "yes", "metric_value"].tolist()
-        group_no = subset.loc[subset["response"] == "no", "metric_value"].tolist()
+        subset = cast(pd.DataFrame, plot_df.loc[plot_df.loc[:, "cell_type"] == cell].copy())
+        group_yes = cast(pd.Series, subset.loc[subset["response"] == "yes", "metric_value"]).tolist()
+        group_no = cast(pd.Series, subset.loc[subset["response"] == "no", "metric_value"]).tolist()
 
         n_yes = len(group_yes)
         n_no = len(group_no)
@@ -183,7 +186,7 @@ def compare_responders(
             "transform_label": "CLR" if transform == "clr" else "Raw",
             "bootstrap_ci": f"95% bootstrap CI on {ci_stat} difference ({bootstrap_iterations} resamples)",
         }
-        return stats_df, plot_df, summary
+        return stats_df, cast(pd.DataFrame, plot_df), summary
 
     if correction == "none":
         stats_df["q_value"] = stats_df["p_value"]
@@ -202,4 +205,4 @@ def compare_responders(
         "bootstrap_ci": f"95% bootstrap CI on {'mean' if test == 'welch_t' else 'median'} difference ({bootstrap_iterations} resamples)",
     }
 
-    return stats_df, plot_df, summary
+    return stats_df, cast(pd.DataFrame, plot_df), summary

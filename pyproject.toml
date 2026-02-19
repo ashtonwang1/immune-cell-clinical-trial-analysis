@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "immune-cell-clinical-trial-analysis"
+version = "0.1.0"
+description = "Immune cell clinical trial analysis pipeline"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

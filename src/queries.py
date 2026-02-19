@@ -6,6 +6,125 @@ from src.analysis import get_cell_frequency_data
 from src.database import get_db_connection
 
 
+def _subset_where_clause(time_filter: str) -> str:
+    base = """
+    WHERE LOWER(sub.condition) = ?
+      AND LOWER(sub.treatment) = ?
+      AND LOWER(s.sample_type) = ?
+    """
+    if time_filter == "baseline_only":
+        base += " AND s.visit_time = ?"
+    return base
+
+
+def _subset_params(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> list[str | float]:
+    params: list[str | float] = [condition.lower(), treatment.lower(), sample_type.lower()]
+    if time_filter == "baseline_only":
+        params.append(0.0)
+    return params
+
+
+def count_samples_by_project(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> pd.Series:
+    conn = get_db_connection()
+    query = f"""
+    SELECT sub.project_id, COUNT(DISTINCT s.sample_id) AS n_samples
+    FROM samples s
+    JOIN subjects sub ON s.subject_pk = sub.subject_pk
+    {_subset_where_clause(time_filter)}
+    GROUP BY sub.project_id
+    """
+    params = _subset_params(condition, treatment, sample_type, time_filter)
+    df = cast(pd.DataFrame, pd.read_sql_query(query, conn, params=params))
+    conn.close()
+    if len(df) == 0:
+        return pd.Series(dtype="int64")
+    return cast(pd.Series, df.set_index("project_id")["n_samples"])
+
+
+def count_subjects_by_project(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> pd.Series:
+    conn = get_db_connection()
+    query = f"""
+    SELECT sub.project_id, COUNT(DISTINCT sub.subject_pk) AS n_subjects
+    FROM samples s
+    JOIN subjects sub ON s.subject_pk = sub.subject_pk
+    {_subset_where_clause(time_filter)}
+    GROUP BY sub.project_id
+    """
+    params = _subset_params(condition, treatment, sample_type, time_filter)
+    df = cast(pd.DataFrame, pd.read_sql_query(query, conn, params=params))
+    conn.close()
+    if len(df) == 0:
+        return pd.Series(dtype="int64")
+    return cast(pd.Series, df.set_index("project_id")["n_subjects"])
+
+
+def count_subjects_by_response_and_sex(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> pd.DataFrame:
+    conn = get_db_connection()
+    query = f"""
+    SELECT response, sex, COUNT(*) AS n_subjects
+    FROM (
+        SELECT DISTINCT sub.subject_pk, LOWER(sub.response) AS response, sub.sex AS sex
+        FROM samples s
+        JOIN subjects sub ON s.subject_pk = sub.subject_pk
+        {_subset_where_clause(time_filter)}
+    ) dedup
+    GROUP BY response, sex
+    """
+    params = _subset_params(condition, treatment, sample_type, time_filter)
+    df = cast(pd.DataFrame, pd.read_sql_query(query, conn, params=params))
+    conn.close()
+    return df
+
+
+def avg_b_cell_male_responders_baseline(
+    condition: str,
+    treatment: str,
+    sample_type: str,
+    time_filter: str,
+) -> float | None:
+    conn = get_db_connection()
+    query = f"""
+    WITH per_subject AS (
+        SELECT sub.subject_pk, AVG(c.count) AS subject_mean_b
+        FROM samples s
+        JOIN subjects sub ON s.subject_pk = sub.subject_pk
+        JOIN cell_counts c ON s.sample_id = c.sample_id
+        {_subset_where_clause(time_filter)}
+          AND sub.sex = 'M'
+          AND LOWER(sub.response) = 'yes'
+          AND c.cell_type = 'b_cell'
+        GROUP BY sub.subject_pk
+    )
+    SELECT AVG(subject_mean_b) AS avg_b FROM per_subject
+    """
+    params = _subset_params(condition, treatment, sample_type, time_filter)
+    row = cast(pd.DataFrame, pd.read_sql_query(query, conn, params=params))
+    conn.close()
+    if len(row) == 0 or pd.isna(row.loc[0, "avg_b"]):
+        return None
+    return float(row.loc[0, "avg_b"])
+
+
 def _fetch_subset(
     condition: str,
     treatment: str,
@@ -14,7 +133,7 @@ def _fetch_subset(
 ) -> pd.DataFrame:
     conn = get_db_connection()
 
-    query = """
+    query = f"""
     SELECT
         sub.project_id,
         sub.subject_pk,
@@ -28,15 +147,10 @@ def _fetch_subset(
     FROM samples s
     JOIN subjects sub ON s.subject_pk = sub.subject_pk
     JOIN cell_counts c ON s.sample_id = c.sample_id
-    WHERE LOWER(sub.condition) = ?
-      AND LOWER(sub.treatment) = ?
-      AND LOWER(s.sample_type) = ?
+    {_subset_where_clause(time_filter)}
     """
 
-    params: list[str | float] = [condition.lower(), treatment.lower(), sample_type.lower()]
-    if time_filter == "baseline_only":
-        query += " AND s.visit_time = ?"
-        params.append(0.0)
+    params = _subset_params(condition, treatment, sample_type, time_filter)
 
     df = cast(pd.DataFrame, pd.read_sql_query(query, conn, params=params))
     conn.close()
@@ -51,30 +165,20 @@ def get_subset_stats(
 ) -> dict[str, pd.Series | pd.DataFrame | int | float | None]:
     df = _fetch_subset(condition, treatment, sample_type, time_filter)
 
-    sample_unique = cast(pd.DataFrame, df.loc[:, ["project_id", "sample_id", "subject_pk"]].drop_duplicates())
-    subject_unique = cast(
-        pd.DataFrame,
-        df.loc[:, ["project_id", "subject_pk", "subject_id", "response", "sex"]].drop_duplicates(),
-    )
+    by_project_samples = count_samples_by_project(condition, treatment, sample_type, time_filter)
+    by_project_subjects = count_subjects_by_project(condition, treatment, sample_type, time_filter)
+    by_response_sex = count_subjects_by_response_and_sex(condition, treatment, sample_type, time_filter)
 
-    by_project_samples = pd.Series(sample_unique["project_id"].tolist(), dtype="string").value_counts()
-    by_project_subjects = pd.Series(subject_unique["project_id"].tolist(), dtype="string").value_counts()
-    by_response = pd.Series(subject_unique["response"].tolist(), dtype="string").value_counts()
-    by_sex = pd.Series(subject_unique["sex"].tolist(), dtype="string").value_counts()
-
-    b_cell = cast(
-        pd.DataFrame,
-        df.loc[
-            (df["sex"] == "M") & (df["response"] == "yes") & (df["cell_type"] == "b_cell"),
-            ["subject_pk", "count"],
-        ].copy(),
-    )
-    avg_b_cell: float | None
-    if len(b_cell) == 0:
-        avg_b_cell = None
+    if len(by_response_sex) == 0:
+        by_response = pd.Series(dtype="int64")
+        by_sex = pd.Series(dtype="int64")
+        n_subjects = 0
     else:
-        subject_level = cast(pd.Series, b_cell.groupby("subject_pk", as_index=True)["count"].mean())
-        avg_b_cell = float(subject_level.mean())
+        by_response = cast(pd.Series, by_response_sex.groupby("response", as_index=True)["n_subjects"].sum())
+        by_sex = cast(pd.Series, by_response_sex.groupby("sex", as_index=True)["n_subjects"].sum())
+        n_subjects = int(by_response.sum())
+
+    avg_b_cell = avg_b_cell_male_responders_baseline(condition, treatment, sample_type, time_filter)
 
     return {
         "df_raw": df,
@@ -82,9 +186,9 @@ def get_subset_stats(
         "by_project_subjects": by_project_subjects,
         "by_response": by_response,
         "by_sex": by_sex,
-        "n_projects": int(sample_unique["project_id"].nunique()),
-        "n_samples": int(sample_unique["sample_id"].nunique()),
-        "n_subjects": int(subject_unique["subject_pk"].nunique()),
+        "n_projects": int(by_project_samples.index.nunique()),
+        "n_samples": int(by_project_samples.sum()) if len(by_project_samples) > 0 else 0,
+        "n_subjects": n_subjects,
         "avg_b_cell_male_responders": avg_b_cell,
     }
 
