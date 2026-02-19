@@ -366,7 +366,8 @@ with tab3:
         ("Baseline | MW | None", "baseline_only", "mannwhitney", "none"),
     ]
 
-    scenario_maps: dict[str, dict[str, bool]] = {}
+    scenario_sig: dict[str, dict[str, bool]] = {}
+    scenario_q: dict[str, dict[str, float | None]] = {}
     for label, sc_time, sc_test, sc_corr in scenario_configs:
         s_df, _, _ = cached_compare_responders(
             condition=condition,
@@ -379,21 +380,30 @@ with tab3:
             test=sc_test,
             correction=sc_corr,
         )
-        scenario_maps[label] = {
+        scenario_sig[label] = {
             str(row["cell_type"]): bool(row["significant"]) for _, row in s_df.iterrows()
         }
+        scenario_q[label] = {
+            str(row["cell_type"]): (float(row["q_value"]) if row["q_value"] is not None else None)
+            for _, row in s_df.iterrows()
+        }
 
-    all_cells = sorted(set().union(*[set(v.keys()) for v in scenario_maps.values()]))
+    all_cells = sorted(set().union(*[set(v.keys()) for v in scenario_sig.values()]))
     reference_label = scenario_configs[0][0]
 
     rows = []
     for cell in all_cells:
-        ref_value = scenario_maps[reference_label].get(cell, False)
+        ref_value = scenario_sig[reference_label].get(cell, False)
         cell_row: dict[str, str] = {"cell_type": str(cell)}
         stable = True
         for label, _, _, _ in scenario_configs:
-            current = scenario_maps[label].get(cell, False)
-            cell_row[label] = "✅" if current else "—"
+            current = scenario_sig[label].get(cell, False)
+            q_val = scenario_q[label].get(cell)
+            if q_val is not None:
+                marker = "✅" if current else "—"
+                cell_row[label] = f"{marker} q={q_val:.3f}"
+            else:
+                cell_row[label] = "N/A"
             stable = stable and (current == ref_value)
         cell_row["robustness"] = "✅ stable" if stable else "⚠️ sensitive"
         rows.append(cell_row)
